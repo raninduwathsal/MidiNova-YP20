@@ -1,3 +1,20 @@
+#include <FastLED.h>
+
+// Define number of keys and LEDs
+const int NUM_KEYS = 36; // Change according to your keyboard
+const int NUM_LEDS = 25; // Match to the available number of LEDs
+
+#define LED_PIN 2  // Pin connected to WS2812 strip
+
+// Define base color and velocity offset color
+const CRGB baseColor = CRGB(255, 255, 0);  // Yellow
+const CRGB velocityOffsetColor = CRGB(255, 100, 0); // Reddish orange
+const float baseBrightnessFactor = 0.05; // 25% brightness for default state
+
+// LED strip setup
+CRGB leds[NUM_LEDS];
+
+//key pins
 const int keyPins[12] = {14, 27, 26, 25, 23, 22, 21, 19, 18, 17, 16, 4};  // Key input pins array (12 keys)
 const int lowerRailPin[3] = {33, 13, 5};  // Lower rail output pins (3 rails for 12 keys)
 const int topRailPin[3] = {32, 12, 15};    // Top rail output pins (3 rails for 12 keys)
@@ -14,6 +31,12 @@ const unsigned long maxPressTime = 329000;  // Maximum time for min velocity (0)
 
 void setup() {
     Serial.begin(115200);
+    FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
+    for (int i = 0; i < NUM_LEDS; i++) {
+        leds[i] = baseColor;
+        leds[i].nscale8_video(255 * baseBrightnessFactor); // Dim to 25%
+    }
+    FastLED.show();
 
     // Initialize lower and top rail pins as outputs
     for (int i = 0; i < 3; i++) {
@@ -40,6 +63,7 @@ void loop() {
         // Step 2: Check all keys connected to this rail
         for (int key = 0; key < 12; key++) {
             int keyIndex = rail * 12 + key;  // Calculate the key index (0-11)
+            int ledIndex = map(keyIndex, 0, NUM_KEYS - 1, 0, NUM_LEDS - 1); // Map keys to LEDs
 
             // Check if the key is on the lower rail
             bool isOnLowerRail = digitalRead(keyPins[key]);
@@ -60,6 +84,7 @@ void loop() {
         // Step 5: Check all keys connected to this rail
         for (int key = 0; key < 12; key++) {
             int keyIndex = rail * 12 + key;  // Calculate the key index (0-11)
+            int ledIndex = map(keyIndex, 0, NUM_KEYS - 1, 0, NUM_LEDS - 1); // Map keys to LEDs
 
             // Check if the key is on the top rail
             bool isOnTopRail = digitalRead(keyPins[key]);
@@ -80,12 +105,19 @@ void loop() {
 
                 sendMidiNoteOn(12*rail + key + 1, velocity);
                 keyPressed[rail][key] = true;  // Set the flag to true so it won't print again until released
+
+                // Update the LED color and brightness based on the velocity
+                setKeyColor(ledIndex, velocity);
+                FastLED.show(); // Ensure update
             }
 
             // If the key is not on the top rail and was previously pressed, reset the flag
             if (!isOnTopRail && keyPressed[rail][key]) {
                 keyPressed[rail][key] = false;  // Reset the flag once the key is released
                 sendMidiNoteOff(12*rail + key + 1, 0);
+
+                resetKeyColor(ledIndex);
+                FastLED.show(); // Ensure update
             }
         }
 
@@ -97,6 +129,22 @@ void loop() {
     delay(10);
 
 }
+
+void setKeyColor(int ledIndex, int velocity) {
+    if (ledIndex < NUM_LEDS) {
+        CRGB newColor = baseColor;
+        nblend(newColor, velocityOffsetColor, velocity * 2);
+        leds[ledIndex] = newColor; // Keep full brightness for key press
+    }
+}
+
+void resetKeyColor(int ledIndex) {
+    if (ledIndex < NUM_LEDS) {
+        leds[ledIndex] = baseColor;
+        leds[ledIndex].nscale8_video(255 * baseBrightnessFactor); // Return to dimmed state
+    }
+}
+
 void sendMidiNoteOn(int note, int velocity) {
   byte midiMessage[3];
   midiMessage[0] = 0x90;  // Note On message (Channel 1)
