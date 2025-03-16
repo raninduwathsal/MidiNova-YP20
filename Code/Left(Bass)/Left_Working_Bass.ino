@@ -1,5 +1,7 @@
 #include <FastLED.h>
 
+#define PEDAL_PIN 35  // Sensor input pin for sustain pedal
+
 // Define number of keys and LEDs
 const int NUM_KEYS = 36; // Change according to your keyboard
 const int NUM_LEDS = 25; // Match to the available number of LEDs
@@ -31,6 +33,8 @@ const unsigned long maxPressTime = 329000;  // Maximum time for min velocity (0)
 
 void setup() {
     Serial.begin(115200);
+
+    pinMode(PEDAL_PIN, INPUT);
     FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
     for (int i = 0; i < NUM_LEDS; i++) {
         leds[i] = baseColor;
@@ -53,6 +57,7 @@ void setup() {
 }
 
 void loop() {
+     handleSustainPedalLogic();  // Call the sustain pedal handler
     // Iterate through the rails (3 rails for 12 keys)
     for (int rail = 0; rail < 3
     ; rail++) {
@@ -129,6 +134,16 @@ void loop() {
     delay(10);
 
 }
+//sustain pedal handler logic MIDI sender near the bottom MIDI functions
+void handleSustainPedalLogic() {
+    static int lastState = HIGH;  // Track the last pedal state
+    int pedalState = digitalRead(PEDAL_PIN);
+
+    if (pedalState != lastState) {  // If the state changes, send MIDI message
+        sendMIDISustain(0xB0, 64, (pedalState == LOW) ? 127 : 0);
+        lastState = pedalState;  // Update state
+    }
+}
 
 void setKeyColor(int ledIndex, int velocity) {
     if (ledIndex < NUM_LEDS) {
@@ -143,6 +158,13 @@ void resetKeyColor(int ledIndex) {
         leds[ledIndex] = baseColor;
         leds[ledIndex].nscale8_video(255 * baseBrightnessFactor); // Return to dimmed state
     }
+}
+
+// Function to send MIDI sustain messages
+void sendMIDISustain(byte command, byte data1, byte data2) {
+    Serial.write(command);  // Send MIDI command
+    Serial.write(data1);    // Send first data byte (CC Number)
+    Serial.write(data2);    // Send second data byte (Value)
 }
 
 void sendMidiNoteOn(int note, int velocity) {
